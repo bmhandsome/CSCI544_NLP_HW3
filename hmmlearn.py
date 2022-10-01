@@ -19,9 +19,9 @@ trans_dict = {}
 START_STATE = '|start|'
 END_STATE = '|end|'
 # Emission matrix
-emission_prob = {}
+emission_prob_dict = {}
 # transition matrix
-transition_prob = {}
+transition_prob_dict = {}
 
 
 ## read training tagged data
@@ -80,23 +80,51 @@ for line in lines:
 for key_word, value in word_tag_dict.items():
     for key_tag, num in value.items():
         #print(f'{key_word} | {key_tag} | {num}')
-        if key_word not in emission_prob:
-            emission_prob[key_word] = {}
-        emission_prob[key_word] = {f'{key_tag}': word_tag_dict[key_word][key_tag] / all_tag_dict[key_tag]}
+        if key_tag not in emission_prob_dict:
+            emission_prob_dict[key_tag] = {}
+        emission_prob_dict[key_tag][key_word] = word_tag_dict[key_word][key_tag] / all_tag_dict[key_tag]
+
+# smoothing for transition probability
+# adding 1 to every transition stage
+tag_with_start = list(all_tag_dict.keys())
+tag_with_start.append(START_STATE)
+tag_with_end = list(all_tag_dict.keys())
+tag_with_end.append(END_STATE)
+
+for start_stage in tag_with_start:
+    for end_stage in tag_with_end:
+        if start_stage == START_STATE and end_stage == END_STATE:
+            continue
+        if start_stage not in trans_dict:
+            trans_dict[start_stage] = {}
+            trans_dict[start_stage][end_stage] = 1
+        elif end_stage not in trans_dict[start_stage]:
+            trans_dict[start_stage][end_stage] = 1
+        else:
+            trans_dict[start_stage][end_stage] = trans_dict[start_stage][end_stage] + 1
+    #if start_stage not in trans_dict[START_STATE]:
+    #    trans_dict[START_STATE][start_stage] = 1
+    #else:
+    #    trans_dict[START_STATE][start_stage] =  trans_dict[START_STATE][start_stage] + 1
+    #if END_STATE not in trans_dict[start_stage]:
+    #    trans_dict[start_stage][END_STATE] = 1
+    #else:
+    #    trans_dict[start_stage][END_STATE] =  trans_dict[start_stage][END_STATE] + 1
+
 
 for start_state, value in trans_dict.items():
     for end_state, num in value.items():
-        if start_state not in transition_prob:
-            transition_prob[start_state] = {}
-        transition_prob[start_state][end_state] = trans_dict[start_state][end_state] / sum(trans_dict[start_state].values())
+        if start_state not in transition_prob_dict:
+            transition_prob_dict[start_state] = {}
+        transition_prob_dict[start_state][end_state] = trans_dict[start_state][end_state] / sum(trans_dict[start_state].values())
 
 json_obj = {}
 json_obj['word_tag_dict'] = word_tag_dict
 json_obj['all_tag_dict'] = all_tag_dict
 json_obj['trans_dict'] = trans_dict
-json_obj['emission_prob'] = emission_prob
-json_obj['transition_prob'] = transition_prob
+json_obj['emission_prob_dict'] = emission_prob_dict
+json_obj['transition_prob_dict'] = transition_prob_dict
 
-str_to_file = json.dumps(json_obj, indent=4)
+str_to_file = json.dumps(json_obj, sort_keys=True, indent=4)
 with open(OUTPUT_FILE_PATH, "wt") as f:
     f.write(str_to_file)
