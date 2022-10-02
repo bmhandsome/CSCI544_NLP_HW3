@@ -7,12 +7,15 @@ TRAIN_TAGGED_INPUT_FILE_PATH = sys.argv[1]
 
 OUTPUT_FILE_PATH = 'hmmmodel.txt'
 
-# word_tag_dict:
-# {word_x: { tag_y: (int) number of this word with this tag }}
-word_tag_dict = {}
+# tag_word_dict:
+# {tag_x: { word_y: (int) number of this word with this tag }}
+tag_word_dict = {}
 # all_tag_dict: 
 # {tag_x: number of this tag in corpus}
 all_tag_dict = {}
+# all_word_dict: 
+# {word_x: number of this word in corpus}
+all_word_dict = {}
 # trans_dict:
 # {start_tag: {end_tag: number of transition from 'start tag' to 'end tag'}}
 trans_dict = {}
@@ -22,7 +25,12 @@ END_STATE = '|end|'
 emission_prob_dict = {}
 # transition matrix
 transition_prob_dict = {}
+# distinct_word_tag_dict:
+# {tag_x: number of distinct words using this tag}
+distinct_word_tag_dict = {}
 
+open_class_tag_list = []
+closed_class_tag_list = []
 
 ## read training tagged data
 
@@ -47,14 +55,19 @@ for line in lines:
             all_tag_dict[tag] = all_tag_dict[tag] + 1
         else:
             all_tag_dict[tag] = 1
-        #fill values in word_tag_dict
-        if only_word in word_tag_dict:
-            if tag in word_tag_dict[only_word]:
-                word_tag_dict[only_word][tag] = word_tag_dict[only_word][tag] + 1
-            else:
-                word_tag_dict[only_word][tag] = 1
+        # fill values in all_word_dict
+        if only_word in all_word_dict: 
+            all_word_dict[only_word] = all_word_dict[only_word] + 1
         else:
-            word_tag_dict[only_word] = {f'{tag}': 1}
+            all_word_dict[only_word] = 1
+        #fill values in word_tag_dict
+        if tag in tag_word_dict:
+            if only_word in tag_word_dict[tag]:
+                tag_word_dict[tag][only_word] = tag_word_dict[tag][only_word] + 1
+            else:
+                tag_word_dict[tag][only_word] = 1
+        else:
+            tag_word_dict[tag] = {f'{only_word}': 1}
 
     for i in range(len(words) + 1):
         #fill values in trans_dict
@@ -77,12 +90,33 @@ for line in lines:
             trans_dict[previous_tag] = {f'{next_tag}': 1}
 
 
-for key_word, value in word_tag_dict.items():
-    for key_tag, num in value.items():
+for key_tag, value in tag_word_dict.items():
+    for key_word, num in value.items():
         #print(f'{key_word} | {key_tag} | {num}')
         if key_tag not in emission_prob_dict:
             emission_prob_dict[key_tag] = {}
-        emission_prob_dict[key_tag][key_word] = word_tag_dict[key_word][key_tag] / all_tag_dict[key_tag]
+        emission_prob_dict[key_tag][key_word] = tag_word_dict[key_tag][key_word] / all_tag_dict[key_tag]
+
+    distinct_word_tag_dict[key_tag] = len(value)
+
+
+# finding open-class, closed-class tag
+## my guess -> if number of distinct words more than 10%, it is an open class
+RATIO = 0.1
+num_of_word = sum(distinct_word_tag_dict.values())
+for key_tag, value in distinct_word_tag_dict.items():
+    if value >= num_of_word * RATIO:
+        open_class_tag_list.append(key_tag)
+    else:
+        closed_class_tag_list.append(key_tag)
+
+if len(open_class_tag_list) == 0:
+    most_distinct_word = max(distinct_word_tag_dict, key=distinct_word_tag_dict.get)
+    open_class_tag_list.append(most_distinct_word)
+    closed_class_tag_list.remove(most_distinct_word)
+else:
+    open_class_tag_list = sorted(open_class_tag_list, key=lambda x: distinct_word_tag_dict[x], reverse=True)
+
 
 # smoothing for transition probability
 # adding 1 to every transition stage
@@ -119,12 +153,18 @@ for start_state, value in trans_dict.items():
         transition_prob_dict[start_state][end_state] = trans_dict[start_state][end_state] / sum(trans_dict[start_state].values())
 
 json_obj = {}
-json_obj['word_tag_dict'] = word_tag_dict
+json_obj['tag_word_dict'] = tag_word_dict
 json_obj['all_tag_dict'] = all_tag_dict
+json_obj['all_word_dict'] = all_word_dict
 json_obj['trans_dict'] = trans_dict
 json_obj['emission_prob_dict'] = emission_prob_dict
 json_obj['transition_prob_dict'] = transition_prob_dict
+json_obj['open_class_tag_list'] = open_class_tag_list
+json_obj['closed_class_tag_list'] = closed_class_tag_list
+
 
 str_to_file = json.dumps(json_obj, sort_keys=True, indent=4)
 with open(OUTPUT_FILE_PATH, "wt") as f:
     f.write(str_to_file)
+
+print(f'Program hmmlearn finish: {datetime.datetime.now()}')
